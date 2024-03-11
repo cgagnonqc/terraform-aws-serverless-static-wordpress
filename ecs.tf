@@ -40,6 +40,25 @@ data "aws_iam_policy_document" "wordpress_bucket_access" {
     effect    = "Allow"
     resources = ["arn:aws:route53:::hostedzone/${var.hosted_zone_id}"]
   }
+
+  statement {
+    actions = ["cloudfront:CreateInvalidation"]
+    effect  = "Allow"
+    resources = [module.cloudfront.wordpress_cloudfront_distribution_arn]
+  }
+}
+
+data "aws_iam_policy_document" "wordpress_ecs_exec" {
+  statement {
+    actions = [
+      "ssmmessages:CreateControlChannel",
+      "ssmmessages:CreateDataChannel",
+      "ssmmessages:OpenControlChannel",
+      "ssmmessages:OpenDataChannel"
+    ]
+    effect    = "Allow"
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_policy" "wordpress_bucket_access" {
@@ -51,6 +70,17 @@ resource "aws_iam_policy" "wordpress_bucket_access" {
 resource "aws_iam_role_policy_attachment" "wordpress_bucket_access" {
   role       = aws_iam_role.wordpress_task.name
   policy_arn = aws_iam_policy.wordpress_bucket_access.arn
+}
+
+resource "aws_iam_policy" "wordpress_ecs_exec" {
+  name        = "${var.site_name}_WordpressECSExec"
+  description = "Allows ECS Exec to the Wordpress container"
+  policy      = data.aws_iam_policy_document.wordpress_ecs_exec.json
+}
+
+resource "aws_iam_role_policy_attachment" "wordpress_ecs_exec" {
+  role       = aws_iam_role.wordpress_task.name
+  policy_arn = aws_iam_policy.wordpress_ecs_exec.arn
 }
 
 resource "aws_iam_role" "wordpress_task" {
@@ -104,23 +134,25 @@ resource "aws_cloudwatch_log_group" "wordpress_container" {
 resource "aws_ecs_task_definition" "wordpress_container" {
   family = "${var.site_name}_wordpress"
   container_definitions = templatefile("${path.module}/task-definitions/wordpress.json", {
-    db_host                  = aws_rds_cluster.serverless_wordpress.endpoint,
-    db_user                  = aws_rds_cluster.serverless_wordpress.master_username,
-    db_password              = random_password.serverless_wordpress_password.result,
-    db_name                  = aws_rds_cluster.serverless_wordpress.database_name,
-    wordpress_image          = "${aws_ecr_repository.serverless_wordpress.repository_url}:latest",
-    wp_dest                  = "https://${var.site_prefix}.${var.site_domain}",
-    wp_region                = var.s3_region,
-    wp_bucket                = module.cloudfront.wordpress_bucket_id,
-    container_dns            = "${var.wordpress_subdomain}.${var.site_domain}",
-    container_dns_zone       = var.hosted_zone_id,
-    container_cpu            = var.ecs_cpu,
-    container_memory         = var.ecs_memory
-    efs_source_volume        = "${var.site_name}_wordpress_persistent"
-    wordpress_admin_user     = var.wordpress_admin_user
-    wordpress_admin_password = var.wordpress_admin_password
-    wordpress_admin_email    = var.wordpress_admin_email
-    site_name                = var.site_name
+    db_host                       = aws_rds_cluster.serverless_wordpress.endpoint
+    db_user                       = aws_rds_cluster.serverless_wordpress.master_username
+    db_password                   = random_password.serverless_wordpress_password.result
+    db_name                       = aws_rds_cluster.serverless_wordpress.database_name
+    wordpress_image               = "${aws_ecr_repository.serverless_wordpress.repository_url}:latest"
+    wp_dest                       = "https://${var.site_prefix}.${var.site_domain}"
+    wp_region                     = var.s3_region
+    wp_bucket                     = module.cloudfront.wordpress_bucket_id
+    container_dns                 = "${var.wordpress_subdomain}.${var.site_domain}"
+    container_dns_zone            = var.hosted_zone_id
+    container_cpu                 = var.ecs_cpu
+    container_memory              = var.ecs_memory
+    container_healthcheck_enabled = var.ecs_healthcheck_enabled
+    efs_source_volume             = "${var.site_name}_wordpress_persistent"
+    wordpress_admin_user          = var.wordpress_admin_user
+    wordpress_admin_password      = var.wordpress_admin_password
+    wordpress_admin_email         = var.wordpress_admin_email
+    site_name                     = var.site_name
+    wordpress_memory_limit        = var.wordpress_memory_limit
   })
 
   cpu                      = var.ecs_cpu
@@ -149,6 +181,7 @@ resource "aws_ecs_task_definition" "wordpress_container" {
     aws_efs_file_system.wordpress_persistent
   ]
 }
+
 
 resource "aws_security_group" "wordpress_security_group" {
   name        = "${var.site_name}_wordpress_sg"
@@ -212,10 +245,12 @@ resource "aws_security_group_rule" "wordpress_sg_egress_3306" {
 
 
 resource "aws_ecs_service" "wordpress_service" {
-  name            = "${var.site_name}_wordpress"
-  task_definition = "${aws_ecs_task_definition.wordpress_container.family}:${aws_ecs_task_definition.wordpress_container.revision}"
-  cluster         = aws_ecs_cluster.wordpress_cluster.arn
-  desired_count   = var.launch
+  name                   = "${var.site_name}_wordpress"
+  task_definition        = "${aws_ecs_task_definition.wordpress_container.family}:${aws_ecs_task_definition.wordpress_container.revision}"
+  cluster                = aws_ecs_cluster.wordpress_cluster.arn
+  desired_count          = var.launch
+  enable_execute_command = true
+  
   # iam_role =
   capacity_provider_strategy {
     capacity_provider = "FARGATE_SPOT"
@@ -237,10 +272,16 @@ resource "aws_ecs_service" "wordpress_service" {
 #tfsec:ignore:AWS090
 resource "aws_ecs_cluster" "wordpress_cluster" {
   name               = "${var.site_name}_wordpress"
+}
+
+resource "aws_ecs_cluster_capacity_providers" "example" {
+  cluster_name = aws_ecs_cluster.wordpress_cluster.name
+
   capacity_providers = ["FARGATE_SPOT"]
+
   default_capacity_provider_strategy {
+    base              = 1
+    weight            = 100
     capacity_provider = "FARGATE_SPOT"
-    weight            = "100"
-    base              = "1"
   }
 }

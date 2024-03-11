@@ -8,12 +8,6 @@ output "wordpress_ecr_repository" {
   description = "The name of the ECR repository where wordpress image is stored."
 }
 
-output "codebuild_project_name" {
-  value       = module.codebuild.codebuild_project_name
-  description = "The name of the created Wordpress codebuild project."
-}
-
-output "codebuild_package_etag" {
-  value       = module.codebuild.codebuild_package_etag
-  description = "The etag of the codebuild package file."
+output "wordpress_cloudfront_distribution_arn" {
+  value = aws_cloudfront_distribution.wordpress_distribution.arn
 }

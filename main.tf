@@ -6,21 +6,22 @@ module "lambda_slack" {
   ecs_cluster_arn = aws_ecs_cluster.wordpress_cluster.arn
 }
 
-module "codebuild" {
-  source                   = "./modules/codebuild"
-  site_name                = var.site_name
-  site_domain              = var.site_domain
-  codebuild_bucket         = "${var.site_name}-build"
-  main_vpc_id              = var.main_vpc_id
-  wordpress_ecr_repository = aws_ecr_repository.serverless_wordpress.name
-  aws_account_id           = var.aws_account_id
-  container_memory         = var.ecs_memory
-}
+#module "codebuild" {
+#  source                   = "./modules/codebuild"
+#  site_name                = var.site_name
+#  site_domain              = var.site_domain
+#  codebuild_bucket         = "${var.site_name}-build"
+#  main_vpc_id              = var.main_vpc_id
+#  wordpress_ecr_repository = aws_ecr_repository.serverless_wordpress.name
+#  aws_account_id           = var.aws_account_id
+#  container_memory         = var.ecs_memory
+#}
 
 module "cloudfront" {
   source             = "./modules/cloudfront"
   site_name          = var.site_name
   site_domain        = var.site_domain
+  site_prefix        = var.site_prefix
   cloudfront_ssl     = aws_acm_certificate.wordpress_site.arn
   cloudfront_aliases = var.cloudfront_aliases
   providers = {
