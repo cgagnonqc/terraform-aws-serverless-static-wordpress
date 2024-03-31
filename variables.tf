@@ -230,3 +230,11 @@ variable "graviton_fargate_enabled" {
   default     = false
   description = "Flag that controls whether ECS Fargate should use Graviton-based containers in [supported regions]https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate-Regions.html)."
 }
+
+variable "container_image_name" {
+  type = string
+}
+
+variable "container_image_tag" {
+  type = string
+}

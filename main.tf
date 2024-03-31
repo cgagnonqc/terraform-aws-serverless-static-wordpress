@@ -24,9 +24,6 @@ module "cloudfront" {
   site_prefix        = var.site_prefix
   cloudfront_ssl     = aws_acm_certificate.wordpress_site.arn
   cloudfront_aliases = var.cloudfront_aliases
-  providers = {
-    aws.ue1 = aws.ue1
-  }
   depends_on = [aws_acm_certificate_validation.wordpress_site,
   module.waf]
   cloudfront_class = var.cloudfront_class
@@ -38,7 +35,4 @@ module "waf" {
   source        = "./modules/waf"
   site_name     = var.site_name
   waf_acl_rules = var.waf_acl_rules
-  providers = {
-    aws.ue1 = aws.ue1
-  }
 }
